@@ -13,19 +13,37 @@
       "backgroundColor": "#0f172a"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SpatiaLore uses your location to detect when you're near a point of interest and play the audio narration automatically.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SpatiaLore needs background location access to play tour narration automatically while your phone is locked or in your pocket, without you needing to keep the app open.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
-      }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "plugins": [
-      "expo-sqlite"
-    ]
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SpatiaLore needs background location access to play tour narration automatically while your phone is locked or in your pocket."
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }
