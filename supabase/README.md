@@ -41,7 +41,22 @@ npm install -g supabase
    ```bash
    supabase db push
    ```
-3. Alternatively, copy and execute the SQL files in order (`0001` through `0006`, followed by `seed/seed.sql`) directly via the **SQL Editor** in the [Supabase Dashboard](https://supabase.com/dashboard).
+3. Alternatively, copy and execute the SQL files in order (`0001` through `0011`, followed by `seed/seed.sql`) directly via the **SQL Editor** in the [Supabase Dashboard](https://supabase.com/dashboard).
 
 ## PostGIS & Geospatial Note
 All location fields in `public.pois` use PostGIS `geography(Point, 4326)`. This enables meter-based radius calculations (`ST_DWithin`, `ST_Distance`) natively without SRID coordinate transformations.
+
+## API Key Strategy
+
+SpatiaLore uses three distinct credential types. NEVER mix these up across client apps.
+
+| Key | Used By | Bypasses RLS? | Where it lives |
+|---|---|---|---|
+| `SUPABASE_ANON_KEY` | Admin Dashboard (Vite/React) + Mobile App (React Native) | No | Public env vars, safe to ship in client bundles |
+| `SUPABASE_SERVICE_ROLE_KEY` | Express backend ONLY (Phase 2) | Yes, full access | Server-side env var ONLY. Never in any client bundle, never in mobile app, never committed to git |
+| Admin Auth Session (JWT) | Admin Dashboard, after login | N/A — grants `authenticated` role, still subject to `is_admin()` check | Handled by Supabase Auth client SDK, stored in browser session |
+
+### Rules for every future phase:
+1. The admin dashboard uses `SUPABASE_ANON_KEY` + a logged-in Supabase Auth session. Every admin user MUST have a corresponding row in `public.profiles`, or all writes will be silently rejected by RLS.
+2. The mobile app uses ONLY `SUPABASE_ANON_KEY`. It never authenticates a user — travelers are always anonymous. It can read published/active content and insert (never read) analytics events.
+3. `SUPABASE_SERVICE_ROLE_KEY` is used exclusively by the Express backend (Phase 2), for admin-only server operations like generating analytics reports. It must never appear in `spatialore-dashboard` or `spatialore-mobile` codebases.
