@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import MapSearchBar from '../components/map/MapSearchBar';
 import TourMap from '../components/map/TourMap';
 import PoiActivationPanel from '../components/pois/PoiActivationPanel';
 import PoiList from '../components/pois/PoiList';
 import ScriptGenerationPanel from '../components/scripts/ScriptGenerationPanel';
+import TourFormModal from '../components/tours/TourFormModal';
+import PublishToggle from '../components/tours/PublishToggle';
+
+import {
+  fetchTourById,
+  updateTour,
+  setTourPublishStatus,
+} from '../lib/toursApi';
 import { fetchOsmPois } from '../lib/overpassClient';
 import {
   fetchActivePoisForTour,
@@ -16,7 +24,13 @@ import { fetchCurrentScriptsForPois } from '../lib/scriptsApi';
 export default function TourDetailPage() {
   const { tourId } = useParams();
 
-  // Map and candidate POIs state
+  // Tour metadata state
+  const [tour, setTour] = useState(null);
+  const [loadingTour, setLoadingTour] = useState(true);
+  const [tourNotFound, setTourNotFound] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Map & candidate POIs state
   const [mapCenter, setMapCenter] = useState({ lat: 26.9855, lng: 75.8513 });
   const [cityName, setCityName] = useState('Jaipur, India');
   const [osmPois, setOsmPois] = useState([]);
@@ -32,6 +46,45 @@ export default function TourDetailPage() {
   const [scriptsMap, setScriptsMap] = useState({});
   const [selectedScriptPoi, setSelectedScriptPoi] = useState(null);
 
+  // Load tour metadata by ID
+  const loadTourMetadata = async () => {
+    setLoadingTour(true);
+    setTourNotFound(false);
+
+    const { data, error } = await fetchTourById(tourId);
+
+    if (error || !data) {
+      setTourNotFound(true);
+      setLoadingTour(false);
+      return;
+    }
+
+    setTour(data);
+    const locationQuery = `${data.city}${data.country ? `, ${data.country}` : ''}`;
+    setCityName(locationQuery);
+
+    // Geocode tour city to set map center automatically on load
+    try {
+      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        locationQuery
+      )}&limit=1&appName=SpatiaLoreAdmin`;
+      const res = await fetch(searchUrl);
+      if (res.ok) {
+        const geoData = await res.json();
+        if (geoData && geoData.length > 0) {
+          setMapCenter({
+            lat: parseFloat(geoData[0].lat),
+            lng: parseFloat(geoData[0].lon),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Could not auto-geocode tour city:', err);
+    } finally {
+      setLoadingTour(false);
+    }
+  };
+
   // Load existing activated POIs for this tour from Supabase
   const loadTourPois = async () => {
     setLoadingActivePois(true);
@@ -40,7 +93,6 @@ export default function TourDetailPage() {
     setActivatedPois(pois);
     setLoadingActivePois(false);
 
-    // Fetch scripts for loaded POIs
     if (pois.length > 0) {
       const poiIds = pois.map((p) => p.id);
       const { data: scriptsData } = await fetchCurrentScriptsForPois(poiIds);
@@ -53,6 +105,7 @@ export default function TourDetailPage() {
   };
 
   useEffect(() => {
+    loadTourMetadata();
     loadTourPois();
   }, [tourId]);
 
@@ -85,6 +138,29 @@ export default function TourDetailPage() {
     setMapCenter({ lat: location.lat, lng: location.lng });
     if (location.displayName) {
       setCityName(location.displayName);
+    }
+  };
+
+  const handleUpdateTour = async (formValues) => {
+    const { data, error } = await updateTour(tourId, formValues);
+    if (error) {
+      return { error };
+    }
+    if (data) {
+      setTour(data);
+      const newCityName = `${data.city}${data.country ? `, ${data.country}` : ''}`;
+      setCityName(newCityName);
+      setIsEditModalOpen(false);
+    }
+    return { data };
+  };
+
+  const handleTogglePublish = async (nextStatus) => {
+    const { data, error } = await setTourPublishStatus(tourId, nextStatus);
+    if (error) {
+      alert(`Failed to update publish status: ${error.message}`);
+    } else if (data) {
+      setTour(data);
     }
   };
 
@@ -127,19 +203,77 @@ export default function TourDetailPage() {
     setSelectedScriptPoi(null);
   };
 
+  if (loadingTour) {
+    return (
+      <div className="page-container">
+        <div className="placeholder-card">
+          <p>Loading tour details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (tourNotFound || !tour) {
+    return (
+      <div className="page-container">
+        <div className="placeholder-card">
+          <h2>Tour Not Found</h2>
+          <p>The tour ID "{tourId}" does not exist or was deleted.</p>
+          <Link to="/" className="btn-primary" style={{ marginTop: '16px' }}>
+            Back to Tours List
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const activePoiCount = activatedPois.filter((p) => p.is_active).length;
+
   return (
     <div className="page-container tour-detail-container">
+      {/* Tour Header Banner */}
+      <div className="tour-banner-card">
+        <div className="banner-main-info">
+          <div className="banner-title-row">
+            <h2>{tour.name}</h2>
+            <PublishToggle
+              tourId={tour.id}
+              isPublished={tour.is_published}
+              activePoiCount={activePoiCount}
+              onTogglePublish={handleTogglePublish}
+            />
+          </div>
+
+          <p className="banner-location">
+            📍 {tour.city}{tour.country ? `, ${tour.country}` : ''}
+          </p>
+
+          {tour.description && (
+            <p className="banner-description">{tour.description}</p>
+          )}
+        </div>
+
+        <div className="banner-actions">
+          <button
+            className="btn-secondary"
+            onClick={() => setIsEditModalOpen(true)}
+          >
+            ✏️ Edit Tour
+          </button>
+        </div>
+      </div>
+
       <div className="page-header">
         <div>
-          <h2>Tour Detail — ID: {tourId}</h2>
-          <p className="subtitle">Discover POIs & Generate Audio Scripts: {cityName}</p>
+          <h3>POI Discovery & Map</h3>
+          <p className="subtitle">Search location: {cityName}</p>
         </div>
         <div className="header-badges">
           <span className="poi-count-badge">
             {loadingOsmPois ? 'Loading Candidates...' : `${osmPois.length} Candidates`}
           </span>
           <span className="poi-count-badge badge-active-count">
-            {activatedPois.filter((p) => p.is_active).length} Activated
+            {activePoiCount} Activated POIs
           </span>
         </div>
       </div>
@@ -175,6 +309,21 @@ export default function TourDetailPage() {
         onOpenScriptGenerator={handleOpenScriptGenerator}
         loading={loadingActivePois}
       />
+
+      {/* Edit Tour Modal */}
+      {isEditModalOpen && (
+        <TourFormModal
+          mode="edit"
+          initialValues={{
+            name: tour.name,
+            city: tour.city,
+            country: tour.country,
+            description: tour.description,
+          }}
+          onSave={handleUpdateTour}
+          onCancel={() => setIsEditModalOpen(false)}
+        />
+      )}
 
       {/* POI Activation Modal */}
       {selectedOsmPoi && (
