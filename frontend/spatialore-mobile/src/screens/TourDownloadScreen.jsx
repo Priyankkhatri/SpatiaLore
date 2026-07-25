@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import LoadingIndicator from '../components/common/LoadingIndicator';
 import ErrorBanner from '../components/common/ErrorBanner';
 import { useActiveTour } from '../context/ActiveTourContext';
+import { clearTriggerStateForTour } from '../lib/storage/tourCacheApi';
 import { colors, spacing, typography } from '../constants/theme';
 
 export default function TourDownloadScreen({ navigation }) {
@@ -21,7 +22,11 @@ export default function TourDownloadScreen({ navigation }) {
     navigation.navigate('TourSelection');
   };
 
-  const handleStartTour = () => {
+  const handleStartTour = async () => {
+    if (selectedTour) {
+      // Clear previous trigger history for a fresh session restart
+      await clearTriggerStateForTour(selectedTour.id);
+    }
     navigation.navigate('ActiveTour');
   };
 

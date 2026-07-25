@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestLocationPermissions } from '../lib/geolocation/locationPermissions';
 import {
   startBackgroundTracking,
   stopBackgroundTracking,
 } from '../lib/geolocation/geolocationService';
+import { setActiveTourId, clearActiveTourId } from '../lib/geolocation/activeSession';
+import { subscribeTriggerEvents } from '../lib/geolocation/triggerEventBus';
 import { useActiveTour } from '../context/ActiveTourContext';
 import { colors, spacing, typography } from '../constants/theme';
 
@@ -18,24 +20,40 @@ export default function ActiveTourScreen({ navigation }) {
   });
   const [lastLocation, setLastLocation] = useState(null);
   const [trackingStarted, setTrackingStarted] = useState(false);
+  const [triggeredPois, setTriggeredPois] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
     let pollInterval = null;
 
+    // 1. Subscribe to geofence trigger events emitted from background locationTask
+    const unsubscribeTriggers = subscribeTriggerEvents((event) => {
+      if (isMounted) {
+        setTriggeredPois((prev) => [
+          { poi: event, timestamp: new Date().toISOString() },
+          ...prev,
+        ]);
+      }
+    });
+
     async function initTracking() {
-      // 1. Request location permissions
+      // 2. Set active tour session ID for background task lookup
+      if (selectedTour?.id) {
+        await setActiveTourId(selectedTour.id);
+      }
+
+      // 3. Request location permissions
       const permResult = await requestLocationPermissions();
       if (!isMounted) return;
 
       setPermissions(permResult);
 
       if (permResult.foregroundGranted) {
-        // 2. Start background location tracking
+        // 4. Start background location tracking
         await startBackgroundTracking();
         if (isMounted) setTrackingStarted(true);
 
-        // 3. Poll AsyncStorage for latest background coordinates (debug UI)
+        // 5. Poll AsyncStorage for latest background coordinates (debug display)
         pollInterval = setInterval(async () => {
           try {
             const raw = await AsyncStorage.getItem('@spatialore_last_location');
@@ -53,11 +71,13 @@ export default function ActiveTourScreen({ navigation }) {
 
     return () => {
       isMounted = false;
+      unsubscribeTriggers();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, []);
+  }, [selectedTour?.id]);
 
   const handleEndTour = async () => {
+    await clearActiveTourId();
     await stopBackgroundTracking();
     navigation.navigate('TourEnd');
   };
@@ -105,12 +125,12 @@ export default function ActiveTourScreen({ navigation }) {
       <View style={styles.tourHeaderCard}>
         <Text style={styles.tourTitle}>{selectedTour?.name || 'Active Tour'}</Text>
         <Text style={styles.tourStatus}>
-          {trackingStarted ? '🟢 Location Tracking Active' : '🟡 Initializing Sensors...'}
+          {trackingStarted ? '🟢 Listening for Geofence Triggers...' : '🟡 Initializing Sensors...'}
         </Text>
 
-        {/* TODO(Phase 4.2): Remove debug coordinate display once real geofence trigger UI is live */}
+        {/* Debug Coordinate Display */}
         <View style={styles.debugBox}>
-          <Text style={styles.debugTitle}>DEV DEBUG — CURRENT LOCATION</Text>
+          <Text style={styles.debugTitle}>DEV DEBUG — CURRENT GPS POSITION</Text>
           {lastLocation ? (
             <Text style={styles.debugCoords}>
               Lat: {lastLocation.latitude.toFixed(5)} | Lng: {lastLocation.longitude.toFixed(5)}{'\n'}
@@ -120,6 +140,41 @@ export default function ActiveTourScreen({ navigation }) {
             <Text style={styles.debugCoords}>Waiting for initial GPS fix...</Text>
           )}
         </View>
+      </View>
+
+      {/* Trigger Event Log Display */}
+      <View style={styles.triggerLogContainer}>
+        {/* TODO(Phase 5): Replace debug trigger log with real narration player UI */}
+        <Text style={styles.triggerLogTitle}>
+          🎯 TRIGGERED POIs ({triggeredPois.length})
+        </Text>
+
+        {triggeredPois.length === 0 ? (
+          <View style={styles.emptyTriggerBox}>
+            <Text style={styles.emptyTriggerText}>
+              No POIs triggered yet. Walk within a POI's radius (e.g. Amber Fort) to fire a narration trigger.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={triggeredPois}
+            keyExtractor={(item, index) => `${item.poi.id}-${index}`}
+            renderItem={({ item }) => (
+              <View style={styles.triggerCard}>
+                <View style={styles.triggerCardRow}>
+                  <Text style={styles.triggerPoiName}>{item.poi.name}</Text>
+                  <Text style={styles.triggerBadge}>TRIGGERED</Text>
+                </View>
+                <Text style={styles.triggerDetails}>
+                  Distance: {item.poi.distanceMeters?.toFixed(1)}m | Trigger Radius: {item.poi.trigger_radius_m}m
+                </Text>
+                <Text style={styles.triggerTime}>
+                  Time: {new Date(item.timestamp).toLocaleTimeString()}
+                </Text>
+              </View>
+            )}
+          />
+        )}
       </View>
 
       <TouchableOpacity style={styles.endTourButton} onPress={handleEndTour}>
@@ -134,7 +189,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: spacing.md,
-    justifyContent: 'space-between',
     paddingVertical: spacing.xl,
   },
   centerContainer: {
@@ -149,7 +203,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   warningText: {
     color: colors.warning,
@@ -161,20 +215,21 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 16,
-    padding: spacing.lg,
+    padding: spacing.md,
     alignItems: 'center',
+    marginBottom: spacing.md,
   },
   tourTitle: {
     ...typography.title,
-    fontSize: 22,
+    fontSize: 20,
     textAlign: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   tourStatus: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: '600',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   debugBox: {
     width: '100%',
@@ -182,22 +237,81 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
-    padding: spacing.md,
+    padding: spacing.sm,
     alignItems: 'center',
   },
   debugTitle: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: colors.textMuted,
     letterSpacing: 0.5,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   debugCoords: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.text,
     textAlign: 'center',
     fontFamily: 'monospace',
+  },
+  triggerLogContainer: {
+    flex: 1,
+    marginBottom: spacing.md,
+  },
+  triggerLogTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+  },
+  emptyTriggerBox: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTriggerText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
     lineHeight: 18,
+  },
+  triggerCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.success,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  triggerCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  triggerPoiName: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  triggerBadge: {
+    color: colors.success,
+    fontWeight: '800',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  triggerDetails: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  triggerTime: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 2,
   },
   errorCard: {
     backgroundColor: colors.surface,
