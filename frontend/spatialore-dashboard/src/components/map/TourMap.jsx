@@ -7,6 +7,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import OsmPoiMarker from './OsmPoiMarker';
+import ActivatedPoiMarker from './ActivatedPoiMarker';
 
 // Fix Leaflet default icon asset paths breaking under Vite bundler
 delete L.Icon.Default.prototype._getIconUrl;
@@ -27,8 +28,24 @@ function RecenterMap({ center }) {
   return null;
 }
 
-export default function TourMap({ center, osmPois = [], onPoiClick }) {
+export default function TourMap({
+  center,
+  osmPois = [],
+  activatedPois = [],
+  onPoiClick,
+  onToggleDeactivatePoi,
+}) {
   const initialCenter = [center?.lat || 26.9855, center?.lng || 75.8513];
+
+  // Set of activated OSM IDs to prevent rendering duplicate candidate markers over activated ones
+  const activatedOsmIds = new Set(
+    activatedPois.map((p) => String(p.osm_id)).filter(Boolean)
+  );
+
+  // Filter discovery markers to exclude already activated POIs
+  const unactivatedOsmPois = osmPois.filter(
+    (poi) => !activatedOsmIds.has(String(poi.osmId))
+  );
 
   return (
     <div className="tour-map-wrapper">
@@ -44,8 +61,18 @@ export default function TourMap({ center, osmPois = [], onPoiClick }) {
         />
         <RecenterMap center={center} />
 
-        {osmPois.map((poi) => (
+        {/* Render Plain OSM Candidate Markers */}
+        {unactivatedOsmPois.map((poi) => (
           <OsmPoiMarker key={poi.osmId} poi={poi} onPoiClick={onPoiClick} />
+        ))}
+
+        {/* Render Activated POI Markers */}
+        {activatedPois.map((poi) => (
+          <ActivatedPoiMarker
+            key={poi.id}
+            poi={poi}
+            onToggleDeactivate={onToggleDeactivatePoi}
+          />
         ))}
       </MapContainer>
     </div>
