@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Express backend service for SpatiaLore LLM script generation and analytics",
   "main": "src/server.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
