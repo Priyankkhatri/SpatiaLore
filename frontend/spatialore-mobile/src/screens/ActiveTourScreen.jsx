@@ -49,7 +49,7 @@ export default function ActiveTourScreen({ navigation }) {
       setPermissions(permResult);
 
       if (permResult.foregroundGranted) {
-        // 4. Start background location tracking
+        // 4. Start background location tracking & PDR sensors
         await startBackgroundTracking();
         if (isMounted) setTrackingStarted(true);
 
@@ -125,19 +125,27 @@ export default function ActiveTourScreen({ navigation }) {
       <View style={styles.tourHeaderCard}>
         <Text style={styles.tourTitle}>{selectedTour?.name || 'Active Tour'}</Text>
         <Text style={styles.tourStatus}>
-          {trackingStarted ? '🟢 Listening for Geofence Triggers...' : '🟡 Initializing Sensors...'}
+          {trackingStarted
+            ? lastLocation?.isPdr
+              ? '🧭 PDR Dead-Reckoning Active (GPS Degraded)'
+              : '🟢 GPS Location Tracking Active'
+            : '🟡 Initializing Sensors...'}
         </Text>
 
-        {/* Debug Coordinate Display */}
+        {/* Debug Coordinate & Sensor Display */}
         <View style={styles.debugBox}>
-          <Text style={styles.debugTitle}>DEV DEBUG — CURRENT GPS POSITION</Text>
+          <Text style={styles.debugTitle}>
+            DEV DEBUG — {lastLocation?.isPdr ? 'PDR ESTIMATED POSITION' : 'CURRENT GPS POSITION'}
+          </Text>
           {lastLocation ? (
             <Text style={styles.debugCoords}>
               Lat: {lastLocation.latitude.toFixed(5)} | Lng: {lastLocation.longitude.toFixed(5)}{'\n'}
-              Accuracy: ±{lastLocation.accuracy?.toFixed(1)}m | Updated: {new Date(lastLocation.timestamp).toLocaleTimeString()}
+              {lastLocation.isPdr
+                ? `Steps: ${lastLocation.stepCount || 0} | Compass: ${lastLocation.headingDegrees?.toFixed(0) || 0}°`
+                : `Accuracy: ±${lastLocation.accuracy?.toFixed(1)}m | Fix: GPS`}
             </Text>
           ) : (
-            <Text style={styles.debugCoords}>Waiting for initial GPS fix...</Text>
+            <Text style={styles.debugCoords}>Waiting for initial sensor fix...</Text>
           )}
         </View>
       </View>
@@ -163,7 +171,9 @@ export default function ActiveTourScreen({ navigation }) {
               <View style={styles.triggerCard}>
                 <View style={styles.triggerCardRow}>
                   <Text style={styles.triggerPoiName}>{item.poi.name}</Text>
-                  <Text style={styles.triggerBadge}>TRIGGERED</Text>
+                  <Text style={styles.triggerBadge}>
+                    {item.poi.isPdrTrigger ? 'TRIGGERED (PDR)' : 'TRIGGERED (GPS)'}
+                  </Text>
                 </View>
                 <Text style={styles.triggerDetails}>
                   Distance: {item.poi.distanceMeters?.toFixed(1)}m | Trigger Radius: {item.poi.trigger_radius_m}m
