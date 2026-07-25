@@ -1,8 +1,9 @@
 import * as Location from 'expo-location';
 import { LOCATION_TASK_NAME } from './locationTask';
+import { startPdrSensors, stopPdrSensors } from './sensorTracker';
 
 /**
- * Starts background location tracking with battery-conscious settings:
+ * Starts background location tracking alongside PDR accelerometer/compass sensors:
  * - Accuracy.Balanced (avoids battery drain of .Highest, optimal for 20-50m geofences)
  * - distanceInterval: 15 meters (prevents thrashing for micro-movement)
  * - timeInterval: 5000ms (max update frequency)
@@ -10,12 +11,16 @@ import { LOCATION_TASK_NAME } from './locationTask';
  */
 export async function startBackgroundTracking() {
   try {
+    // 1. Initialize PDR sensors (pedometer & magnetometer)
+    await startPdrSensors();
+
     const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (isRunning) {
       console.log('Background location tracking is already active.');
       return { success: true, error: null };
     }
 
+    // 2. Start Expo Location Task Updates
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.Balanced,
       timeInterval: 5000,
@@ -24,11 +29,11 @@ export async function startBackgroundTracking() {
       activityType: Location.ActivityType.Fitness,
       foregroundService: {
         notificationTitle: 'SpatiaLore Audio Tour Active 🎧',
-        notificationBody: 'Listening for nearby points of interest in background...',
+        notificationBody: 'Listening for nearby points of interest (GPS + PDR active)...',
       },
     });
 
-    console.log('✅ Started background location updates');
+    console.log('✅ Started background location & PDR sensor updates');
     return { success: true, error: null };
   } catch (err) {
     console.error('Failed to start background location tracking:', err);
@@ -37,15 +42,19 @@ export async function startBackgroundTracking() {
 }
 
 /**
- * Stops background location tracking and dismisses Android foreground service notification.
+ * Stops background location tracking and PDR sensors.
  */
 export async function stopBackgroundTracking() {
   try {
+    // 1. Stop PDR sensor listeners
+    stopPdrSensors();
+
     const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (!isRunning) {
       return { success: true, error: null };
     }
 
+    // 2. Stop Location updates
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
     console.log('🛑 Stopped background location updates');
     return { success: true, error: null };
