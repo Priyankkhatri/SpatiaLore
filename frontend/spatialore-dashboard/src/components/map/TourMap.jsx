@@ -34,15 +34,14 @@ export default function TourMap({
   activatedPois = [],
   onPoiClick,
   onToggleDeactivatePoi,
+  onOpenScriptGenerator,
 }) {
   const initialCenter = [center?.lat || 26.9855, center?.lng || 75.8513];
 
-  // Set of activated OSM IDs to prevent rendering duplicate candidate markers over activated ones
   const activatedOsmIds = new Set(
     activatedPois.map((p) => String(p.osm_id)).filter(Boolean)
   );
 
-  // Filter discovery markers to exclude already activated POIs
   const unactivatedOsmPois = osmPois.filter(
     (poi) => !activatedOsmIds.has(String(poi.osmId))
   );
@@ -72,6 +71,7 @@ export default function TourMap({
             key={poi.id}
             poi={poi}
             onToggleDeactivate={onToggleDeactivatePoi}
+            onOpenScriptGenerator={onOpenScriptGenerator}
           />
         ))}
       </MapContainer>

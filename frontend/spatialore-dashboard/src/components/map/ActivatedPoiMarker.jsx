@@ -17,12 +17,15 @@ const createActivatedIcon = (isActive) => {
   });
 };
 
-export default function ActivatedPoiMarker({ poi, onToggleDeactivate }) {
-  // Parse PostGIS location or fallback lat/lng
+export default function ActivatedPoiMarker({
+  poi,
+  onToggleDeactivate,
+  onOpenScriptGenerator,
+}) {
   let lat = poi.lat;
   let lng = poi.lng;
 
-  // Handle PostGIS geography representation if location object or WKT string
+  // Handle PostGIS geography representation
   if ((!lat || !lng) && poi.location) {
     if (typeof poi.location === 'object' && poi.location.coordinates) {
       lng = poi.location.coordinates[0];
@@ -61,8 +64,10 @@ export default function ActivatedPoiMarker({ poi, onToggleDeactivate }) {
           </div>
 
           <div className="popup-actions">
-            {/* TODO(Phase 1.5): Wire up free-tier LLM script generation modal */}
-            <button className="btn-secondary btn-sm" disabled title="Coming in Phase 1.5">
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => onOpenScriptGenerator && onOpenScriptGenerator(poi)}
+            >
               Generate Script
             </button>
 
