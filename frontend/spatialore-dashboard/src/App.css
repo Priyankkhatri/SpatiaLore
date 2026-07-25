@@ -143,6 +143,8 @@
   flex: 1;
   padding: 24px;
   background-color: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Page Components */
@@ -150,6 +152,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  flex: 1;
 }
 
 .page-header {
@@ -167,6 +170,16 @@
   color: var(--text-muted);
   font-size: 0.9rem;
   margin-top: 2px;
+}
+
+.poi-count-badge {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--accent-color);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .btn-primary {
@@ -193,6 +206,11 @@
   cursor: not-allowed;
 }
 
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
 .btn-block {
   width: 100%;
 }
@@ -204,6 +222,109 @@
   padding: 40px 24px;
   text-align: center;
   color: var(--text-muted);
+}
+
+/* Map Components */
+.map-search-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-search-form {
+  display: flex;
+  gap: 12px;
+}
+
+.map-search-input {
+  flex: 1;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.map-search-input:focus {
+  border-color: var(--accent-color);
+}
+
+.search-error-text {
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.loading-bar {
+  background-color: rgba(56, 189, 248, 0.1);
+  border: 1px solid var(--accent-color);
+  color: var(--accent-color);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.tour-map-wrapper {
+  flex: 1;
+  min-height: 480px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.tour-map-container {
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+}
+
+/* Leaflet Popup Styling */
+.poi-popup .leaflet-popup-content-wrapper {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  padding: 4px;
+}
+
+.poi-popup .leaflet-popup-tip {
+  background-color: #1e293b;
+}
+
+.popup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+
+.popup-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.popup-meta {
+  display: flex;
+  gap: 6px;
+}
+
+.badge-category {
+  background-color: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.btn-add-poi {
+  margin-top: 4px;
+  width: 100%;
 }
 
 /* Login Page */
