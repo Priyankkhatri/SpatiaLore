@@ -1,10 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import generateScriptRouter from './routes/generateScript.js';
+import analyticsRouter from './routes/analytics.js';
 import { errorHandler } from './middleware/errorHandler.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api', generateScriptRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // Error Middleware
 app.use(errorHandler);
