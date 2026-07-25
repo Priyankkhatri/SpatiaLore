@@ -14,11 +14,6 @@ export async function getDb() {
 
 /**
  * Initializes local SQLite tables and indexes.
- *
- * RATIONALE FOR EXPO-SQLITE OVER ASYNCSTORAGE:
- * AsyncStorage is a flat key-value store, unsuitable for querying structured spatial relationships.
- * SQLite allows indexing and performing fast, low-latency coordinate checks in Phase 4's
- * background geofencing loop without loading/scanning entire JSON blobs into memory per check.
  */
 export async function initSchema() {
   try {
@@ -53,10 +48,17 @@ export async function initSchema() {
         word_count INTEGER
       );
 
+      CREATE TABLE IF NOT EXISTS poi_trigger_state (
+        poi_id TEXT PRIMARY KEY,
+        tour_id TEXT NOT NULL,
+        triggered_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_cached_pois_tour_id ON cached_pois (tour_id);
+      CREATE INDEX IF NOT EXISTS idx_poi_trigger_state_tour_id ON poi_trigger_state (tour_id);
     `);
 
-    console.log('✅ SQLite local storage schema initialized successfully');
+    console.log('✅ SQLite local storage schema & trigger state table initialized');
   } catch (err) {
     console.error('Error initializing SQLite schema:', err);
     throw err;

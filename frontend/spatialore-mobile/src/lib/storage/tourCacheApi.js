@@ -26,7 +26,6 @@ export async function saveTourToCache({ tour, pois = [], scripts = [] }) {
       );
 
       // 2. Clean slate for POIs and Scripts associated with this tour
-      // Select existing POI IDs for script deletion
       const existingPois = await db.getAllAsync(
         `SELECT id FROM cached_pois WHERE tour_id = ?;`,
         [tour.id]
@@ -86,6 +85,24 @@ export async function saveTourToCache({ tour, pois = [], scripts = [] }) {
 }
 
 /**
+ * Loads cached POIs for a specific tour from SQLite without fetching scripts.
+ */
+export async function loadCachedPoisForTour(tourId) {
+  try {
+    const db = await getDb();
+    const pois = await db.getAllAsync(
+      `SELECT id, tour_id, name, category, lat, lng, trigger_radius_m, prefetch_radius_m, display_order
+       FROM cached_pois WHERE tour_id = ? ORDER BY display_order ASC;`,
+      [tourId]
+    );
+    return pois || [];
+  } catch (err) {
+    console.error('Error loading cached POIs from SQLite:', err);
+    return [];
+  }
+}
+
+/**
  * Loads a cached tour, its POIs, and scripts from local SQLite.
  */
 export async function loadCachedTour(tourId) {
@@ -103,11 +120,7 @@ export async function loadCachedTour(tourId) {
     }
 
     // 2. Query POIs
-    const pois = await db.getAllAsync(
-      `SELECT id, tour_id, name, category, lat, lng, trigger_radius_m, prefetch_radius_m, display_order
-       FROM cached_pois WHERE tour_id = ? ORDER BY display_order ASC;`,
-      [tourId]
-    );
+    const pois = await loadCachedPoisForTour(tourId);
 
     // 3. Query Scripts for these POIs
     let scripts = [];
@@ -135,6 +148,56 @@ export async function loadCachedTour(tourId) {
 }
 
 /**
+ * Marks a POI as triggered in SQLite for a tour session (idempotent).
+ */
+export async function markPoiTriggered(tourId, poiId) {
+  try {
+    const db = await getDb();
+    const triggeredAt = new Date().toISOString();
+    await db.runAsync(
+      `INSERT OR IGNORE INTO poi_trigger_state (poi_id, tour_id, triggered_at) VALUES (?, ?, ?);`,
+      [poiId, tourId, triggeredAt]
+    );
+    return true;
+  } catch (err) {
+    console.error('Error marking POI triggered in SQLite:', err);
+    return false;
+  }
+}
+
+/**
+ * Returns an array of POI IDs that have already been triggered for this tour session.
+ */
+export async function getTriggeredPoiIds(tourId) {
+  try {
+    const db = await getDb();
+    const rows = await db.getAllAsync(
+      `SELECT poi_id FROM poi_trigger_state WHERE tour_id = ?;`,
+      [tourId]
+    );
+    return rows ? rows.map((r) => r.poi_id) : [];
+  } catch (err) {
+    console.error('Error getting triggered POI IDs:', err);
+    return [];
+  }
+}
+
+/**
+ * Clears all persistent trigger history for a tour session (called when restarting a tour).
+ */
+export async function clearTriggerStateForTour(tourId) {
+  try {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM poi_trigger_state WHERE tour_id = ?;`, [tourId]);
+    console.log(`🧹 Cleared trigger state for tour ID ${tourId}`);
+    return true;
+  } catch (err) {
+    console.error('Error clearing trigger state:', err);
+    return false;
+  }
+}
+
+/**
  * Retrieves the single most-recently downloaded tour from local SQLite.
  */
 export async function getMostRecentCachedTour() {
@@ -151,12 +214,12 @@ export async function getMostRecentCachedTour() {
     return await loadCachedTour(recent.id);
   } catch (err) {
     console.error('Error fetching most recent cached tour:', err);
-    return { data: null, error: err };
+    return { data: null, error: null };
   }
 }
 
 /**
- * Removes a specific tour and its associated POIs/scripts from SQLite.
+ * Removes a specific tour and its associated POIs/scripts/trigger-state from SQLite.
  */
 export async function clearTourCache(tourId) {
   try {
@@ -174,6 +237,7 @@ export async function clearTourCache(tourId) {
           poiIds
         );
       }
+      await db.runAsync(`DELETE FROM poi_trigger_state WHERE tour_id = ?;`, [tourId]);
       await db.runAsync(`DELETE FROM cached_pois WHERE tour_id = ?;`, [tourId]);
       await db.runAsync(`DELETE FROM cached_tours WHERE id = ?;`, [tourId]);
     });
