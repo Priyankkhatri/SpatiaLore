@@ -21,9 +21,12 @@ export async function startBackgroundTracking() {
     }
 
     // 2. Start Expo Location Task Updates
+    // Battery Guardrail (Phase 7.1): 10000ms (10s) interval reduces GPS chip wakeups.
+    // Average walking speed ~1.4 m/s covers ~14m in 10s, remaining comfortably inside
+    // the minimum 20m trigger radius floor.
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.Balanced,
-      timeInterval: 5000,
+      timeInterval: 10000,
       distanceInterval: 15,
       pausesUpdatesAutomatically: false,
       activityType: Location.ActivityType.Fitness,

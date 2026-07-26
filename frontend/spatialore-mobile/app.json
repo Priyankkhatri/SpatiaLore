@@ -18,7 +18,8 @@
         "NSLocationWhenInUseUsageDescription": "SpatiaLore uses your location to detect when you're near a point of interest and play the audio narration automatically.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "SpatiaLore needs background location access to play tour narration automatically while your phone is locked or in your pocket, without you needing to keep the app open.",
         "UIBackgroundModes": [
-          "location"
+          "location",
+          "audio"
         ]
       }
     },
@@ -31,7 +32,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "FOREGROUND_SERVICE_LOCATION",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "plugins": [

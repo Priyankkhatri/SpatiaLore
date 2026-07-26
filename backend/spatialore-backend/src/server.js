@@ -6,6 +6,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import generateScriptRouter from './routes/generateScript.js';
 import analyticsRouter from './routes/analytics.js';
+import adminRouter from './routes/admin.js';
 import { scriptGenerationLimiter, analyticsLimiter } from './middleware/rateLimiters.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -29,7 +30,7 @@ app.use(
   cors({
     origin: ALLOWED_ORIGIN,
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Task-Secret'],
   })
 );
 
@@ -42,9 +43,10 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', service: 'spatialore-backend' });
 });
 
-// 6. Rate-Limited API Routes
+// 6. API Routes
 app.use('/api', scriptGenerationLimiter, generateScriptRouter);
 app.use('/api/analytics', analyticsLimiter, analyticsRouter);
+app.use('/api/admin', adminRouter);
 
 // 7. Global Error Middleware
 app.use(errorHandler);

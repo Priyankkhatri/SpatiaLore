@@ -11,7 +11,6 @@ export default function OsmPoiMarker({ poi, onPoiClick }) {
             <span className="badge-category">{poi.category}</span>
           </div>
 
-          {/* TODO(Phase 1.4): Click opens POI activation panel & persists to Supabase */}
           <button
             className="btn-primary btn-sm btn-add-poi"
             onClick={() => {

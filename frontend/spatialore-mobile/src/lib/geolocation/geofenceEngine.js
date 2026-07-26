@@ -63,3 +63,54 @@ export function checkPoiTriggers({
 
   return { newlyTriggered };
 }
+
+/**
+ * Evaluates current user coordinates against cached POIs to detect newly entered prefetch zones.
+ *
+ * @param {Object} params
+ * @param {number} params.currentLat - Current user latitude
+ * @param {number} params.currentLng - Current user longitude
+ * @param {Array} params.pois - List of cached POIs with lat, lng, prefetch_radius_m
+ * @param {Array<string>} params.alreadyTriggeredPoiIds - Array of POI IDs already triggered
+ * @param {Array<string>} params.alreadyPrefetchedPoiIds - Array of POI IDs already prefetched
+ * @returns {{ newlyEnteredPrefetchZone: Array }} List of POI objects that entered prefetch radius
+ */
+export function checkPrefetchZone({
+  currentLat,
+  currentLng,
+  pois = [],
+  alreadyTriggeredPoiIds = [],
+  alreadyPrefetchedPoiIds = [],
+}) {
+  const triggeredSet = new Set(alreadyTriggeredPoiIds);
+  const prefetchedSet = new Set(alreadyPrefetchedPoiIds);
+  const newlyEnteredPrefetchZone = [];
+
+  for (const poi of pois) {
+    if (
+      !poi ||
+      !poi.id ||
+      triggeredSet.has(poi.id) ||
+      prefetchedSet.has(poi.id)
+    ) {
+      continue;
+    }
+
+    const distanceMeters = haversineDistanceMeters(
+      currentLat,
+      currentLng,
+      poi.lat,
+      poi.lng
+    );
+
+    if (distanceMeters <= (poi.prefetch_radius_m || 100)) {
+      newlyEnteredPrefetchZone.push({
+        ...poi,
+        distanceMeters,
+      });
+    }
+  }
+
+  return { newlyEnteredPrefetchZone };
+}
+

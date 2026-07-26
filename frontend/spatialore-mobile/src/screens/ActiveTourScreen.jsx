@@ -7,12 +7,30 @@ import {
   stopBackgroundTracking,
 } from '../lib/geolocation/geolocationService';
 import { setActiveTourId, clearActiveTourId } from '../lib/geolocation/activeSession';
-import { subscribeTriggerEvents } from '../lib/geolocation/triggerEventBus';
-import { useActiveTour } from '../context/ActiveTourContext';
+import {
+  subscribeTriggerEvents,
+  subscribePrefetchEvents,
+} from '../lib/geolocation/triggerEventBus';
+import RetryToast from '../components/common/RetryToast';
 import { colors, spacing, typography } from '../constants/theme';
 
 export default function ActiveTourScreen({ navigation }) {
-  const { selectedTour } = useActiveTour();
+  const {
+    selectedTour,
+    hotScripts,
+    currentlyPlaying,
+    narrationQueue,
+    playbackHistory,
+    isTtsAvailable,
+    isPaused,
+    retryToast,
+    retryFailedNarration,
+    dismissRetryToast,
+    pauseCurrentNarration,
+    resumeCurrentNarration,
+    skipCurrentNarration,
+    stopCurrentNarration,
+  } = useActiveTour();
 
   const [permissions, setPermissions] = useState({
     foregroundGranted: null,
@@ -26,11 +44,21 @@ export default function ActiveTourScreen({ navigation }) {
     let isMounted = true;
     let pollInterval = null;
 
-    // 1. Subscribe to geofence trigger events emitted from background locationTask
+    // 1a. Subscribe to geofence trigger events emitted from background locationTask
     const unsubscribeTriggers = subscribeTriggerEvents((event) => {
       if (isMounted) {
         setTriggeredPois((prev) => [
-          { poi: event, timestamp: new Date().toISOString() },
+          { poi: event, type: 'trigger', timestamp: new Date().toISOString() },
+          ...prev,
+        ]);
+      }
+    });
+
+    // 1b. Subscribe to prefetch zone events (early warning)
+    const unsubscribePrefetch = subscribePrefetchEvents((event) => {
+      if (isMounted) {
+        setTriggeredPois((prev) => [
+          { poi: event, type: 'prefetch', timestamp: new Date().toISOString() },
           ...prev,
         ]);
       }
@@ -72,11 +100,13 @@ export default function ActiveTourScreen({ navigation }) {
     return () => {
       isMounted = false;
       unsubscribeTriggers();
+      unsubscribePrefetch();
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [selectedTour?.id]);
 
   const handleEndTour = async () => {
+    stopCurrentNarration();
     await clearActiveTourId();
     await stopBackgroundTracking();
     navigation.navigate('TourEnd');
@@ -113,6 +143,15 @@ export default function ActiveTourScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* TTS Engine Unavailable Warning */}
+      {!isTtsAvailable && (
+        <View style={[styles.warningBanner, { borderColor: colors.error, backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+          <Text style={[styles.warningText, { color: colors.error }]}>
+            ⚠️ Text-To-Speech engine is unavailable on this device. Audio narration cannot be played.
+          </Text>
+        </View>
+      )}
+
       {/* Degraded Mode Warning if background permission denied */}
       {permissions.backgroundGranted === false && (
         <View style={styles.warningBanner}>
@@ -150,33 +189,113 @@ export default function ActiveTourScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Trigger Event Log Display */}
+      {/* Real Narration Player Card (Now Playing & Controls) */}
+      {currentlyPlaying ? (
+        <View style={styles.nowPlayingCard}>
+          <View style={styles.nowPlayingHeader}>
+            <Text style={styles.nowPlayingBadge}>🔊 NOW PLAYING</Text>
+            {narrationQueue.length > 0 && (
+              <View style={styles.queueBadge}>
+                <Text style={styles.queueBadgeText}>Up next: {narrationQueue.length} more</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.nowPlayingPoiName}>{currentlyPlaying.name}</Text>
+          <Text style={styles.nowPlayingCategory}>
+            Category: {currentlyPlaying.category || 'Landmark'}
+          </Text>
+
+          <View style={styles.controlsRow}>
+            <TouchableOpacity
+              style={[styles.controlButton, styles.pauseButton]}
+              onPress={isPaused ? resumeCurrentNarration : pauseCurrentNarration}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.pauseButtonText}>
+                {isPaused ? 'Resume ▶️' : 'Pause ⏸️'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.controlButton, styles.skipButton]}
+              onPress={skipCurrentNarration}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.skipButtonText}>Skip ⏭️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.controlButton, styles.stopButton]}
+              onPress={stopCurrentNarration}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.stopButtonText}>Stop 🛑</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : narrationQueue.length > 0 ? (
+        <View style={styles.queuedCard}>
+          <Text style={styles.queuedText}>
+            ⏳ Narration Queue: {narrationQueue.length} POI(s) waiting to play...
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Trigger & Prefetch Event Log Display */}
       <View style={styles.triggerLogContainer}>
-        {/* TODO(Phase 5): Replace debug trigger log with real narration player UI */}
         <Text style={styles.triggerLogTitle}>
-          🎯 TRIGGERED POIs ({triggeredPois.length})
+          📜 PLAYBACK & GEOFENCE LOG ({playbackHistory.length}) | HOT CACHE ({Object.keys(hotScripts || {}).length})
         </Text>
 
-        {triggeredPois.length === 0 ? (
+        {playbackHistory.length === 0 && triggeredPois.length === 0 ? (
           <View style={styles.emptyTriggerBox}>
             <Text style={styles.emptyTriggerText}>
-              No POIs triggered yet. Walk within a POI's radius (e.g. Amber Fort) to fire a narration trigger.
+              No narration played yet. Walk near a POI (e.g. Amber Fort) to trigger audio playback automatically.
             </Text>
           </View>
         ) : (
           <FlatList
-            data={triggeredPois}
+            data={
+              playbackHistory.length > 0
+                ? playbackHistory
+                : triggeredPois.map((item) => ({
+                    poi: item.poi,
+                    status: item.type === 'prefetch' ? 'prefetched' : 'triggered',
+                    timestamp: item.timestamp,
+                  }))
+            }
             keyExtractor={(item, index) => `${item.poi.id}-${index}`}
             renderItem={({ item }) => (
-              <View style={styles.triggerCard}>
+              <View
+                style={[
+                  styles.triggerCard,
+                  item.status === 'prefetched' && styles.prefetchCard,
+                  item.status === 'no_script_available' && styles.errorHistoryCard,
+                ]}
+              >
                 <View style={styles.triggerCardRow}>
                   <Text style={styles.triggerPoiName}>{item.poi.name}</Text>
-                  <Text style={styles.triggerBadge}>
-                    {item.poi.isPdrTrigger ? 'TRIGGERED (PDR)' : 'TRIGGERED (GPS)'}
+                  <Text
+                    style={[
+                      styles.triggerBadge,
+                      item.status === 'prefetched' && styles.prefetchBadge,
+                      item.status === 'no_script_available' && styles.errorBadge,
+                    ]}
+                  >
+                    {item.status === 'played'
+                      ? '✅ SPOKEN'
+                      : item.status === 'no_script_available'
+                      ? '⚠️ NO SCRIPT'
+                      : item.status === 'prefetched'
+                      ? '🚀 PREFETCHED'
+                      : '🎯 TRIGGERED'}
                   </Text>
                 </View>
                 <Text style={styles.triggerDetails}>
-                  Distance: {item.poi.distanceMeters?.toFixed(1)}m | Trigger Radius: {item.poi.trigger_radius_m}m
+                  {item.status === 'no_script_available'
+                    ? `No narration script available for "${item.poi.name}"`
+                    : `Distance: ${item.poi.distanceMeters?.toFixed(1) || '--'}m`}
                 </Text>
                 <Text style={styles.triggerTime}>
                   Time: {new Date(item.timestamp).toLocaleTimeString()}
@@ -190,6 +309,15 @@ export default function ActiveTourScreen({ navigation }) {
       <TouchableOpacity style={styles.endTourButton} onPress={handleEndTour}>
         <Text style={styles.endTourButtonText}>End Tour 🛑</Text>
       </TouchableOpacity>
+
+      {/* Non-Blocking Retry Toast for Transient TTS Engine Failures */}
+      {retryToast && (
+        <RetryToast
+          message={retryToast.message}
+          onRetry={retryFailedNarration}
+          onDismiss={dismissRetryToast}
+        />
+      )}
     </View>
   );
 }
@@ -263,6 +391,110 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'monospace',
   },
+  nowPlayingCard: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: colors.success,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  nowPlayingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  nowPlayingBadge: {
+    color: colors.success,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  queueBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  queueBadgeText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  nowPlayingPoiName: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  nowPlayingCategory: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: spacing.sm,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+  },
+  controlButton: {
+    flex: 1,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  pauseButton: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: colors.warning,
+  },
+  pauseButtonText: {
+    color: colors.warning,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  skipButton: {
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderColor: colors.primary,
+  },
+  skipButtonText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  stopButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: colors.error,
+  },
+  stopButtonText: {
+    color: colors.error,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  queuedCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  queuedText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  errorHistoryCard: {
+    borderColor: colors.warning,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+  },
+  errorBadge: {
+    color: colors.warning,
+  },
   triggerLogContainer: {
     flex: 1,
     marginBottom: spacing.md,
@@ -297,6 +529,10 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     marginBottom: spacing.xs,
   },
+  prefetchCard: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+  },
   triggerCardRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -313,6 +549,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 10,
     letterSpacing: 0.5,
+  },
+  prefetchBadge: {
+    color: colors.primary,
   },
   triggerDetails: {
     color: colors.textMuted,

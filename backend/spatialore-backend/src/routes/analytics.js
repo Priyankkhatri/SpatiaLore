@@ -22,8 +22,6 @@ import { insertAnalyticsEvent, insertAnalyticsBatch } from '../lib/analyticsApi.
 
 const router = Router();
 
-// TODO(Phase 2.2): Add rate limiting middleware here to prevent ingestion flood abuse.
-
 /**
  * POST /api/analytics/event
  * Ingests a single anonymous analytics event from the traveler mobile app.

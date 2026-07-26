@@ -5,9 +5,11 @@ import {
   loadCachedPoisForTour,
   getTriggeredPoiIds,
   markPoiTriggered,
+  getPrefetchedPoiIds,
+  markPoiPrefetched,
 } from '../storage/tourCacheApi';
-import { checkPoiTriggers } from './geofenceEngine';
-import { emitTriggerEvent } from './triggerEventBus';
+import { checkPoiTriggers, checkPrefetchZone } from './geofenceEngine';
+import { emitTriggerEvent, emitPrefetchEvent } from './triggerEventBus';
 import {
   isGpsFixStale,
   GPS_MIN_ACCEPTABLE_ACCURACY_M,
@@ -152,15 +154,43 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   }
 
   try {
-    // 3. Load active tour's cached POIs & existing triggered POI IDs from SQLite
+    // 3. Load active tour's cached POIs, triggered POI IDs, and prefetched POI IDs from SQLite
     const pois = await loadCachedPoisForTour(activeTourId);
     if (!pois || pois.length === 0) {
       return;
     }
 
     const alreadyTriggeredPoiIds = await getTriggeredPoiIds(activeTourId);
+    const alreadyPrefetchedPoiIds = await getPrefetchedPoiIds(activeTourId);
 
-    // 4. Evaluate geofence entry using pure Haversine distance math
+    // 4. Evaluate prefetch-zone entry (early-warning priming zone)
+    const { newlyEnteredPrefetchZone } = checkPrefetchZone({
+      currentLat: evalLat,
+      currentLng: evalLng,
+      pois,
+      alreadyTriggeredPoiIds,
+      alreadyPrefetchedPoiIds,
+    });
+
+    for (const poi of newlyEnteredPrefetchZone) {
+      console.log(
+        `🚀 [Prefetch Zone (${isUsingPdrFallback ? 'PDR' : 'GPS'})] Entered prefetch radius for POI "${
+          poi.name
+        }" (Dist: ${poi.distanceMeters.toFixed(1)}m, Prefetch Radius: ${poi.prefetch_radius_m}m)`
+      );
+
+      // Persist prefetch state in SQLite
+      await markPoiPrefetched(activeTourId, poi.id);
+
+      // Emit prefetch event over event bus to prime hot-script memory cache in ActiveTourContext
+      emitPrefetchEvent({
+        ...poi,
+        isPdrPrefetch: isUsingPdrFallback,
+        prefetchedAt: new Date().toISOString(),
+      });
+    }
+
+    // 5. Evaluate geofence entry (trigger zone)
     const { newlyTriggered } = checkPoiTriggers({
       currentLat: evalLat,
       currentLng: evalLng,
@@ -168,12 +198,12 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       alreadyTriggeredPoiIds,
     });
 
-    // 5. Process newly triggered POIs (persist trigger state + emit event for UI/audio)
+    // Process newly triggered POIs (persist trigger state + emit event for UI/audio)
     for (const poi of newlyTriggered) {
       console.log(
         `🎯 [Geofence Trigger (${isUsingPdrFallback ? 'PDR' : 'GPS'})] Entered POI "${
           poi.name
-        }" (Dist: ${poi.distanceMeters.toFixed(1)}m, Radius: ${poi.trigger_radius_m}m)`
+        }" (Dist: ${poi.distanceMeters.toFixed(1)}m, Trigger Radius: ${poi.trigger_radius_m}m)`
       );
 
       // Persist trigger state immediately before emitting event
@@ -187,6 +217,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       });
     }
   } catch (evalErr) {
-    console.error('Error during geofence trigger evaluation:', evalErr);
+    console.error('Error during geofence trigger/prefetch evaluation:', evalErr);
   }
 });
+

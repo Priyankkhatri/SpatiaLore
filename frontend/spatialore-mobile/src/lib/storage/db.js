@@ -42,10 +42,11 @@ export async function initSchema() {
       );
 
       CREATE TABLE IF NOT EXISTS cached_scripts (
-        poi_id TEXT PRIMARY KEY,
+        poi_id TEXT NOT NULL,
+        language_code TEXT NOT NULL DEFAULT 'en',
         content TEXT NOT NULL,
-        language_code TEXT NOT NULL,
-        word_count INTEGER
+        word_count INTEGER,
+        PRIMARY KEY (poi_id, language_code)
       );
 
       CREATE TABLE IF NOT EXISTS poi_trigger_state (
@@ -54,11 +55,31 @@ export async function initSchema() {
         triggered_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS poi_prefetch_state (
+        poi_id TEXT PRIMARY KEY,
+        tour_id TEXT NOT NULL,
+        prefetched_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS analytics_queue (
+        id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        tour_id TEXT,
+        poi_id TEXT,
+        session_id TEXT NOT NULL,
+        value_numeric REAL,
+        metadata TEXT,
+        created_at_client TEXT NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE INDEX IF NOT EXISTS idx_cached_pois_tour_id ON cached_pois (tour_id);
       CREATE INDEX IF NOT EXISTS idx_poi_trigger_state_tour_id ON poi_trigger_state (tour_id);
+      CREATE INDEX IF NOT EXISTS idx_poi_prefetch_state_tour_id ON poi_prefetch_state (tour_id);
+      CREATE INDEX IF NOT EXISTS idx_analytics_queue_synced ON analytics_queue (synced);
     `);
 
-    console.log('✅ SQLite local storage schema & trigger state table initialized');
+    console.log('✅ SQLite local storage schema, state & analytics tables initialized');
   } catch (err) {
     console.error('Error initializing SQLite schema:', err);
     throw err;

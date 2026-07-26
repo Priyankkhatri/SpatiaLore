@@ -103,9 +103,9 @@ export async function loadCachedPoisForTour(tourId) {
 }
 
 /**
- * Loads a cached tour, its POIs, and scripts from local SQLite.
+ * Loads a cached tour, its POIs, and scripts for a specific language from local SQLite.
  */
-export async function loadCachedTour(tourId) {
+export async function loadCachedTour(tourId, languageCode = 'en') {
   try {
     const db = await getDb();
 
@@ -122,14 +122,14 @@ export async function loadCachedTour(tourId) {
     // 2. Query POIs
     const pois = await loadCachedPoisForTour(tourId);
 
-    // 3. Query Scripts for these POIs
+    // 3. Query Scripts for these POIs matching target languageCode
     let scripts = [];
     if (pois && pois.length > 0) {
       const poiIds = pois.map((p) => p.id);
       const placeholders = poiIds.map(() => '?').join(',');
       scripts = await db.getAllAsync(
-        `SELECT poi_id, content, language_code, word_count FROM cached_scripts WHERE poi_id IN (${placeholders});`,
-        poiIds
+        `SELECT poi_id, content, language_code, word_count FROM cached_scripts WHERE poi_id IN (${placeholders}) AND language_code = ?;`,
+        [...poiIds, languageCode]
       );
     }
 
@@ -198,6 +198,64 @@ export async function clearTriggerStateForTour(tourId) {
 }
 
 /**
+ * Marks a POI as prefetched in SQLite for a tour session (idempotent).
+ */
+export async function markPoiPrefetched(tourId, poiId) {
+  try {
+    const db = await getDb();
+    const prefetchedAt = new Date().toISOString();
+    await db.runAsync(
+      `INSERT OR IGNORE INTO poi_prefetch_state (poi_id, tour_id, prefetched_at) VALUES (?, ?, ?);`,
+      [poiId, tourId, prefetchedAt]
+    );
+    return true;
+  } catch (err) {
+    console.error('Error marking POI prefetched in SQLite:', err);
+    return false;
+  }
+}
+
+/**
+ * Returns an array of POI IDs that have already been prefetched for this tour session.
+ */
+export async function getPrefetchedPoiIds(tourId) {
+  try {
+    const db = await getDb();
+    const rows = await db.getAllAsync(
+      `SELECT poi_id FROM poi_prefetch_state WHERE tour_id = ?;`,
+      [tourId]
+    );
+    return rows ? rows.map((r) => r.poi_id) : [];
+  } catch (err) {
+    console.error('Error getting prefetched POI IDs:', err);
+    return [];
+  }
+}
+
+/**
+ * Clears all persistent prefetch history for a tour session (called when restarting a tour).
+ */
+export async function clearPrefetchStateForTour(tourId) {
+  try {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM poi_prefetch_state WHERE tour_id = ?;`, [tourId]);
+    console.log(`🧹 Cleared prefetch state for tour ID ${tourId}`);
+    return true;
+  } catch (err) {
+    console.error('Error clearing prefetch state:', err);
+    return false;
+  }
+}
+
+/**
+ * Clears both persistent trigger and prefetch history for a tour session (called when restarting a tour).
+ */
+export async function clearTourSessionState(tourId) {
+  await clearTriggerStateForTour(tourId);
+  await clearPrefetchStateForTour(tourId);
+}
+
+/**
  * Retrieves the single most-recently downloaded tour from local SQLite.
  */
 export async function getMostRecentCachedTour() {
@@ -219,7 +277,7 @@ export async function getMostRecentCachedTour() {
 }
 
 /**
- * Removes a specific tour and its associated POIs/scripts/trigger-state from SQLite.
+ * Removes a specific tour and its associated POIs/scripts/trigger/prefetch-state from SQLite.
  */
 export async function clearTourCache(tourId) {
   try {
@@ -238,6 +296,7 @@ export async function clearTourCache(tourId) {
         );
       }
       await db.runAsync(`DELETE FROM poi_trigger_state WHERE tour_id = ?;`, [tourId]);
+      await db.runAsync(`DELETE FROM poi_prefetch_state WHERE tour_id = ?;`, [tourId]);
       await db.runAsync(`DELETE FROM cached_pois WHERE tour_id = ?;`, [tourId]);
       await db.runAsync(`DELETE FROM cached_tours WHERE id = ?;`, [tourId]);
     });
@@ -246,5 +305,77 @@ export async function clearTourCache(tourId) {
   } catch (err) {
     console.error('Error clearing tour cache from SQLite:', err);
     return { data: null, error: err };
+  }
+}
+
+/**
+ * Diagnostic integrity check for SQLite tour cache data.
+ * Scope note: Checks structural validity (required non-null fields, valid coordinates)
+ * rather than detecting missing optional scripts.
+ *
+ * @param {string} tourId - Tour ID to verify
+ * @returns {Promise<{ isValid: boolean, issues: string[] }>}
+ */
+export async function verifyTourCacheIntegrity(tourId) {
+  const issues = [];
+  try {
+    const db = await getDb();
+
+    // 1. Verify Tour record
+    const tour = await db.getFirstAsync(
+      `SELECT id, name FROM cached_tours WHERE id = ?;`,
+      [tourId]
+    );
+    if (!tour) {
+      issues.push('Tour metadata record missing from local SQLite cache.');
+      return { isValid: false, issues };
+    }
+
+    // 2. Verify POIs
+    const pois = await db.getAllAsync(
+      `SELECT id, name, lat, lng, trigger_radius_m FROM cached_pois WHERE tour_id = ?;`,
+      [tourId]
+    );
+
+    if (!pois || pois.length === 0) {
+      issues.push('No Points of Interest (POIs) cached for this tour.');
+      return { isValid: false, issues };
+    }
+
+    // 3. Verify POI fields
+    for (const poi of pois) {
+      if (
+        typeof poi.lat !== 'number' ||
+        typeof poi.lng !== 'number' ||
+        isNaN(poi.lat) ||
+        isNaN(poi.lng) ||
+        !poi.trigger_radius_m
+      ) {
+        issues.push(`POI "${poi.name || poi.id}" has corrupted latitude, longitude, or trigger radius.`);
+      }
+    }
+
+    // 4. Verify Script entries
+    const poiIds = pois.map((p) => p.id);
+    const placeholders = poiIds.map(() => '?').join(',');
+    const scripts = await db.getAllAsync(
+      `SELECT poi_id, content FROM cached_scripts WHERE poi_id IN (${placeholders});`,
+      poiIds
+    );
+
+    if (!scripts || scripts.length === 0) {
+      issues.push('No narration scripts found for any POIs in local SQLite storage.');
+    }
+
+    return {
+      isValid: issues.length === 0,
+      issues,
+    };
+  } catch (err) {
+    console.error('Error verifying tour cache integrity:', err);
+    return {
+      isValid: false,
+      issues: [`Database inspection error: ${err.message}`],
+    };
   }
 }

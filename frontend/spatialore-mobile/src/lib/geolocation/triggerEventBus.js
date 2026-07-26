@@ -3,24 +3,25 @@
  * to foreground UI components (ActiveTourScreen) without extra dependencies.
  */
 
-const listeners = new Set();
+const triggerListeners = new Set();
+const prefetchListeners = new Set();
 
 /**
  * Subscribes a callback to trigger events.
  * Returns an unsubscribe function for cleanup in React useEffect.
  */
 export function subscribeTriggerEvents(callback) {
-  listeners.add(callback);
+  triggerListeners.add(callback);
   return () => {
-    listeners.delete(callback);
+    triggerListeners.delete(callback);
   };
 }
 
 /**
- * Emits a newly triggered POI event to all active listeners.
+ * Emits a newly triggered POI event to all active trigger listeners.
  */
 export function emitTriggerEvent(poi) {
-  listeners.forEach((cb) => {
+  triggerListeners.forEach((cb) => {
     try {
       cb(poi);
     } catch (err) {
@@ -28,3 +29,28 @@ export function emitTriggerEvent(poi) {
     }
   });
 }
+
+/**
+ * Subscribes a callback to prefetch events.
+ * Returns an unsubscribe function for cleanup in React useEffect.
+ */
+export function subscribePrefetchEvents(callback) {
+  prefetchListeners.add(callback);
+  return () => {
+    prefetchListeners.delete(callback);
+  };
+}
+
+/**
+ * Emits a newly prefetched POI event to all active prefetch listeners.
+ */
+export function emitPrefetchEvent(poi) {
+  prefetchListeners.forEach((cb) => {
+    try {
+      cb(poi);
+    } catch (err) {
+      console.error('Error in prefetch event listener:', err);
+    }
+  });
+}
+
