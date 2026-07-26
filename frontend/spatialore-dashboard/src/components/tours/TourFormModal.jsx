@@ -4,11 +4,27 @@ export default function TourFormModal({ mode = 'create', initialValues = {}, onS
   const [name, setName] = useState(initialValues.name || '');
   const [city, setCity] = useState(initialValues.city || '');
   const [country, setCountry] = useState(initialValues.country || '');
-  const [description, setDescription] = useState(initialValues.description || '');
+  const [supportedLanguages, setSupportedLanguages] = useState(
+    initialValues.supported_languages || ['en']
+  );
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  const isFormInvalid = !name.trim() || !city.trim();
+  const AVAILABLE_LANGUAGES = [
+    { code: 'en', label: 'English' },
+    { code: 'hi', label: 'Hindi (हिंदी)' },
+    { code: 'fr', label: 'French (Français)' },
+    { code: 'es', label: 'Spanish (Español)' },
+    { code: 'de', label: 'German (Deutsch)' },
+  ];
+
+  const isFormInvalid = !name.trim() || !city.trim() || supportedLanguages.length === 0;
+
+  const toggleLanguage = (code) => {
+    setSupportedLanguages((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,6 +39,7 @@ export default function TourFormModal({ mode = 'create', initialValues = {}, onS
         city: city.trim(),
         country: country.trim(),
         description: description.trim(),
+        supported_languages: supportedLanguages,
       });
 
       if (error) {
@@ -100,7 +117,7 @@ export default function TourFormModal({ mode = 'create', initialValues = {}, onS
             <label htmlFor="tour-description">Description</label>
             <textarea
               id="tour-description"
-              rows={4}
+              rows={3}
               placeholder="Provide a brief summary of what travelers will experience on this audio tour..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -108,9 +125,35 @@ export default function TourFormModal({ mode = 'create', initialValues = {}, onS
             />
           </div>
 
+          <div className="form-group">
+            <label>Supported Languages *</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '6px' }}>
+              {AVAILABLE_LANGUAGES.map((lang) => (
+                <label
+                  key={lang.code}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={supportedLanguages.includes(lang.code)}
+                    onChange={() => toggleLanguage(lang.code)}
+                    disabled={saving}
+                  />
+                  {lang.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
           {isFormInvalid && (
             <p className="validation-help-text">
-              * Tour Name and City are required fields.
+              * Tour Name, City, and at least 1 Supported Language are required.
             </p>
           )}
 

@@ -5,14 +5,14 @@ const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 /**
  * Calls backend API to generate audio narration text using primary (self-hosted) or fallback (Groq) LLM.
  */
-export async function generateScriptApi({ poiName, category, city, country }) {
+export async function generateScriptApi({ poiName, category, city, country, languageCode = 'en' }) {
   try {
     const res = await fetch(`${backendUrl}/api/generate-script`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ poiName, category, city, country }),
+      body: JSON.stringify({ poiName, category, city, country, languageCode }),
     });
 
     const data = await res.json();

@@ -4,10 +4,12 @@ import { generateScriptApi, saveScriptToSupabase } from '../../lib/scriptsApi';
 export default function ScriptGenerationPanel({
   poi,
   cityName = 'Jaipur, India',
+  supportedLanguages = ['en'],
   currentScript = null,
   onScriptSaved,
   onClose,
 }) {
+  const [selectedLang, setSelectedLang] = useState('en');
   const [content, setContent] = useState(currentScript?.content || '');
   const [llmProvider, setLlmProvider] = useState(currentScript?.llm_provider || null);
   const [llmModel, setLlmModel] = useState(currentScript?.llm_model || null);
@@ -15,6 +17,14 @@ export default function ScriptGenerationPanel({
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  const LANGUAGE_OPTIONS = [
+    { code: 'en', label: 'English' },
+    { code: 'hi', label: 'Hindi (हिंदी)' },
+    { code: 'fr', label: 'French (Français)' },
+    { code: 'es', label: 'Spanish (Español)' },
+    { code: 'de', label: 'German (Deutsch)' },
+  ];
 
   // Parse City and Country from cityName string (e.g. "Jaipur, India")
   const cityParts = cityName.split(',').map((s) => s.trim());
@@ -30,6 +40,7 @@ export default function ScriptGenerationPanel({
       category: poi.category || 'landmark',
       city,
       country,
+      languageCode: selectedLang,
     });
 
     if (error) {
@@ -52,11 +63,11 @@ export default function ScriptGenerationPanel({
 
     const { data, error } = await saveScriptToSupabase({
       poiId: poi.id,
-      languageCode: 'en',
+      languageCode: selectedLang,
       content: content.trim(),
       llmProvider: llmProvider || 'manual-edit',
       llmModel: llmModel || 'none',
-      generationPrompt: generationPrompt || `Manual narration edit for ${poi.name}`,
+      generationPrompt: generationPrompt || `Manual narration edit for ${poi.name} [${selectedLang}]`,
     });
 
     if (error) {
@@ -92,8 +103,24 @@ export default function ScriptGenerationPanel({
             <span className="badge-category">{poi.category || 'landmark'}</span>
           </div>
           <div className="meta-item">
-            <label>Location</label>
-            <span className="text-muted">{city}, {country}</span>
+            <label>Target Narration Language</label>
+            <select
+              value={selectedLang}
+              onChange={(e) => setSelectedLang(e.target.value)}
+              disabled={generating || saving}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                borderColor: '#cbd5e1',
+                fontWeight: '600',
+              }}
+            >
+              {LANGUAGE_OPTIONS.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

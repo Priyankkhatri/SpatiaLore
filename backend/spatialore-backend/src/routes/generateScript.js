@@ -5,7 +5,7 @@ const router = Router();
 
 router.post('/generate-script', async (req, res, next) => {
   try {
-    const { poiName, category, city, country } = req.body;
+    const { poiName, category, city, country, languageCode } = req.body;
 
     if (!poiName || typeof poiName !== 'string' || !poiName.trim()) {
       return res.status(400).json({ error: 'poiName is required' });
@@ -25,6 +25,7 @@ router.post('/generate-script', async (req, res, next) => {
       category: category.trim(),
       city: city.trim(),
       country: country.trim(),
+      languageCode: typeof languageCode === 'string' ? languageCode.trim() : 'en',
     });
 
     return res.status(200).json(scriptResult);
